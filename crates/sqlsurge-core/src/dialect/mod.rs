@@ -1,6 +1,7 @@
 //! SQL dialect support
 
 use sqlparser::dialect::{Dialect, PostgreSqlDialect};
+use std::str::FromStr;
 
 /// Supported SQL dialects
 #[derive(Debug, Clone, Copy, Default)]
@@ -24,12 +25,15 @@ impl SqlDialect {
             SqlDialect::PostgreSQL => "public",
         }
     }
+}
 
-    /// Parse dialect from string
-    pub fn from_str(s: &str) -> Option<Self> {
+impl FromStr for SqlDialect {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "postgresql" | "postgres" | "pg" => Some(SqlDialect::PostgreSQL),
-            _ => None,
+            "postgresql" | "postgres" | "pg" => Ok(SqlDialect::PostgreSQL),
+            _ => Err(format!("Unknown dialect: {}", s)),
         }
     }
 }

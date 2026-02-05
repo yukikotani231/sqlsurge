@@ -1,8 +1,8 @@
 //! Name resolver - resolves table and column references
 
 use sqlparser::ast::{
-    Expr, ObjectName, Query, Select, SelectItem, SetExpr, Statement, TableFactor,
-    TableWithJoins, GroupByExpr, FunctionArguments,
+    Expr, FunctionArguments, GroupByExpr, ObjectName, Query, Select, SelectItem, SetExpr,
+    Statement, TableFactor, TableWithJoins,
 };
 use std::collections::HashMap;
 
@@ -84,7 +84,9 @@ impl<'a> NameResolver<'a> {
                                             DiagnosticKind::TableNotFound,
                                             format!("Table '{}' not found", name),
                                         )
-                                        .with_help("Check that the table exists in your schema definition"),
+                                        .with_help(
+                                            "Check that the table exists in your schema definition",
+                                        ),
                                     );
                                 }
                             }
@@ -100,7 +102,9 @@ impl<'a> NameResolver<'a> {
                                             DiagnosticKind::TableNotFound,
                                             format!("Table '{}' not found", name),
                                         )
-                                        .with_help("Check that the table exists in your schema definition"),
+                                        .with_help(
+                                            "Check that the table exists in your schema definition",
+                                        ),
                                     );
                                 }
                             }
@@ -197,7 +201,9 @@ impl<'a> NameResolver<'a> {
 
                 // Register table in scope
                 let alias_name = alias.as_ref().map(|a| a.name.value.clone());
-                let lookup_name = alias_name.clone().unwrap_or_else(|| table_name.name.clone());
+                let lookup_name = alias_name
+                    .clone()
+                    .unwrap_or_else(|| table_name.name.clone());
 
                 self.tables.insert(
                     lookup_name,
@@ -207,7 +213,9 @@ impl<'a> NameResolver<'a> {
                     },
                 );
             }
-            TableFactor::Derived { subquery, alias, .. } => {
+            TableFactor::Derived {
+                subquery, alias, ..
+            } => {
                 // Subquery - resolve it but don't add to scope (for now)
                 self.resolve_query(subquery);
                 // TODO: Handle subquery columns in scope
@@ -277,22 +285,20 @@ impl<'a> NameResolver<'a> {
             Expr::Nested(inner) => {
                 self.resolve_expr(inner);
             }
-            Expr::Function(func) => {
-                match &func.args {
-                    FunctionArguments::None => {}
-                    FunctionArguments::Subquery(_) => {}
-                    FunctionArguments::List(args) => {
-                        for arg in &args.args {
-                            if let sqlparser::ast::FunctionArg::Unnamed(
-                                sqlparser::ast::FunctionArgExpr::Expr(e),
-                            ) = arg
-                            {
-                                self.resolve_expr(e);
-                            }
+            Expr::Function(func) => match &func.args {
+                FunctionArguments::None => {}
+                FunctionArguments::Subquery(_) => {}
+                FunctionArguments::List(args) => {
+                    for arg in &args.args {
+                        if let sqlparser::ast::FunctionArg::Unnamed(
+                            sqlparser::ast::FunctionArgExpr::Expr(e),
+                        ) = arg
+                        {
+                            self.resolve_expr(e);
                         }
                     }
                 }
-            }
+            },
             Expr::InList { expr, list, .. } => {
                 self.resolve_expr(expr);
                 for e in list {
@@ -458,10 +464,8 @@ fn find_similar_column(table: &TableDef, name: &str) -> Option<String> {
         let distance = levenshtein_distance(&name_lower, &col_lower);
 
         // Only suggest if reasonably similar (distance <= 3)
-        if distance <= 3 {
-            if best_match.is_none() || distance < best_match.unwrap().0 {
-                best_match = Some((distance, col_name));
-            }
+        if distance <= 3 && (best_match.is_none() || distance < best_match.unwrap().0) {
+            best_match = Some((distance, col_name));
         }
     }
 
@@ -484,11 +488,11 @@ fn levenshtein_distance(a: &str, b: &str) -> usize {
 
     let mut dp = vec![vec![0; n + 1]; m + 1];
 
-    for i in 0..=m {
-        dp[i][0] = i;
+    for (i, row) in dp.iter_mut().enumerate().take(m + 1) {
+        row[0] = i;
     }
-    for j in 0..=n {
-        dp[0][j] = j;
+    for (j, val) in dp[0].iter_mut().enumerate() {
+        *val = j;
     }
 
     for i in 1..=m {

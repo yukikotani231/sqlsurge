@@ -137,7 +137,9 @@ impl SqlType {
                 sqlparser::ast::ArrayElemTypeDef::Parenthesis(dt) => {
                     SqlType::Array(Box::new(SqlType::from_ast(dt)))
                 }
-                sqlparser::ast::ArrayElemTypeDef::None => SqlType::Array(Box::new(SqlType::Unknown)),
+                sqlparser::ast::ArrayElemTypeDef::None => {
+                    SqlType::Array(Box::new(SqlType::Unknown))
+                }
             },
 
             DataType::Custom(name, _) => {

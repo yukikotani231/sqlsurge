@@ -53,10 +53,8 @@ fn run(args: Args) -> Result<bool> {
             let mut schema_files = schema;
             if let Some(dir) = schema_dir {
                 let pattern = format!("{}/**/*.sql", dir.display());
-                for entry in glob::glob(&pattern).into_diagnostic()? {
-                    if let Ok(path) = entry {
-                        schema_files.push(path);
-                    }
+                for path in glob::glob(&pattern).into_diagnostic()?.flatten() {
+                    schema_files.push(path);
                 }
             }
 
@@ -77,7 +75,10 @@ fn run(args: Args) -> Result<bool> {
             let (catalog, schema_diags) = builder.build();
 
             if !schema_diags.is_empty() {
-                eprintln!("Warning: Schema parsing produced {} warnings", schema_diags.len());
+                eprintln!(
+                    "Warning: Schema parsing produced {} warnings",
+                    schema_diags.len()
+                );
             }
 
             // Collect query files
@@ -85,10 +86,8 @@ fn run(args: Args) -> Result<bool> {
             for pattern in &files {
                 let pattern_str = pattern.display().to_string();
                 if pattern_str.contains('*') {
-                    for entry in glob::glob(&pattern_str).into_diagnostic()? {
-                        if let Ok(path) = entry {
-                            query_files.push(path);
-                        }
+                    for path in glob::glob(&pattern_str).into_diagnostic()?.flatten() {
+                        query_files.push(path);
                     }
                 } else {
                     query_files.push(pattern.clone());

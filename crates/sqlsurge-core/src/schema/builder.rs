@@ -1,8 +1,6 @@
 //! Schema builder - converts SQL AST to Catalog
 
-use sqlparser::ast::{
-    ColumnOption, ColumnOptionDef, ObjectName, Statement, TableConstraint,
-};
+use sqlparser::ast::{ColumnOption, ColumnOptionDef, ObjectName, Statement, TableConstraint};
 use sqlparser::dialect::PostgreSqlDialect;
 use sqlparser::parser::Parser;
 
@@ -45,7 +43,11 @@ impl SchemaBuilder {
             self.process_statement(&stmt);
         }
 
-        if self.diagnostics.iter().any(|d| d.severity == crate::error::Severity::Error) {
+        if self
+            .diagnostics
+            .iter()
+            .any(|d| d.severity == crate::error::Severity::Error)
+        {
             Err(std::mem::take(&mut self.diagnostics))
         } else {
             Ok(())
@@ -54,12 +56,10 @@ impl SchemaBuilder {
 
     /// Process a single SQL statement
     fn process_statement(&mut self, stmt: &Statement) {
-        match stmt {
-            Statement::CreateTable(create) => {
-                self.process_create_table(create);
-            }
-            // TODO: Handle other statements (CREATE INDEX, ALTER TABLE, etc.)
-            _ => {}
+        // Currently only handles CREATE TABLE
+        // TODO: Handle other statements (CREATE INDEX, ALTER TABLE, etc.)
+        if let Statement::CreateTable(create) = stmt {
+            self.process_create_table(create);
         }
     }
 

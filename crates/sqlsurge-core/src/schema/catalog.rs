@@ -58,10 +58,7 @@ impl Catalog {
 
     /// Look up a table by name
     pub fn get_table(&self, name: &QualifiedName) -> Option<&TableDef> {
-        let schema_name = name
-            .schema
-            .as_ref()
-            .unwrap_or(&self.default_schema);
+        let schema_name = name.schema.as_ref().unwrap_or(&self.default_schema);
         self.schemas
             .get(schema_name)
             .and_then(|s| s.tables.get(&name.name))

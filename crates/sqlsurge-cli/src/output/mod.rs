@@ -33,12 +33,7 @@ impl OutputFormatter {
             };
 
             // Print main message
-            eprintln!(
-                "{}[{}]: {}",
-                severity_str,
-                diag.code(),
-                diag.message
-            );
+            eprintln!("{}[{}]: {}", severity_str, diag.code(), diag.message);
 
             // Print file location if we have a span
             if let Some(span) = &diag.span {

@@ -1,8 +1,7 @@
 //! Error and diagnostic types
 
-use miette::{Diagnostic as MietteDiagnostic, SourceSpan};
+use miette::SourceSpan;
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
 
 /// Source location span
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -144,27 +143,4 @@ impl DiagnosticKind {
             DiagnosticKind::ParseError => "parse-error",
         }
     }
-}
-
-/// Error type for sqlsurge operations
-#[derive(Debug, Error, MietteDiagnostic)]
-pub enum SqlSurgeError {
-    #[error("Failed to parse SQL")]
-    #[diagnostic(code(sqlsurge::parse_error))]
-    ParseError {
-        #[source_code]
-        src: String,
-        #[label("parse error here")]
-        span: SourceSpan,
-        #[help]
-        help: String,
-    },
-
-    #[error("Failed to read file: {path}")]
-    #[diagnostic(code(sqlsurge::io_error))]
-    IoError {
-        path: String,
-        #[source]
-        source: std::io::Error,
-    },
 }

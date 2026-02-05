@@ -84,7 +84,11 @@ mod tests {
         let mut analyzer = Analyzer::new(&catalog);
 
         let diagnostics = analyzer.analyze("SELECT id, name FROM users");
-        assert!(diagnostics.is_empty(), "Expected no errors: {:?}", diagnostics);
+        assert!(
+            diagnostics.is_empty(),
+            "Expected no errors: {:?}",
+            diagnostics
+        );
     }
 
     #[test]
