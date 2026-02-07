@@ -6,13 +6,52 @@ use serde::{Deserialize, Serialize};
 /// Source location span
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Span {
+    /// Byte offset from start of source (optional, for miette compatibility)
     pub offset: usize,
+    /// Length in bytes
     pub length: usize,
+    /// Line number (1-indexed)
+    pub line: usize,
+    /// Column number (1-indexed)
+    pub column: usize,
 }
 
 impl Span {
+    /// Create a span with byte offset (for backwards compatibility)
     pub fn new(offset: usize, length: usize) -> Self {
-        Self { offset, length }
+        Self {
+            offset,
+            length,
+            line: 0,
+            column: 0,
+        }
+    }
+
+    /// Create a span with line and column information
+    pub fn with_location(line: usize, column: usize, length: usize) -> Self {
+        Self {
+            offset: 0,
+            length,
+            line,
+            column,
+        }
+    }
+
+    /// Create a span from sqlparser's Span
+    pub fn from_sqlparser(span: &sqlparser::tokenizer::Span) -> Self {
+        let start = span.start;
+        let end = span.end;
+        let length = if end.column > start.column {
+            end.column as usize - start.column as usize
+        } else {
+            1
+        };
+        Self {
+            offset: 0,
+            length,
+            line: start.line as usize,
+            column: start.column as usize,
+        }
     }
 }
 
