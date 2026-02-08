@@ -202,16 +202,17 @@ sqlsurge check -s schema.sql -f sarif queries/*.sql > results.sarif
 ## Supported SQL Dialects
 
 - **PostgreSQL** (default) — fully supported
-- MySQL — planned
+- **MySQL** — supported (`--dialect mysql`)
 - SQLite — planned
 
-Use the `--dialect` flag to specify the dialect (currently only `postgresql` is supported).
+Use the `--dialect` flag to specify the dialect.
 
 ## Roadmap
 
 - [x] Configuration file (`sqlsurge.toml`)
+- [x] MySQL dialect support
 - [ ] LSP server for editor integration
-- [ ] MySQL and SQLite dialect support
+- [ ] SQLite dialect support
 - [ ] Type inference for expressions
 - [ ] Custom rule plugins
 

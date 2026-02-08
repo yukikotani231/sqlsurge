@@ -122,7 +122,7 @@ cargo run -- check --format sarif --schema schema.sql query.sql
 - Integration tests use SQL fixtures in `tests/fixtures/`
 - Real-world schema tests in `tests/fixtures/real-world/` (Chinook, Pagila, Northwind) with valid and invalid query files
 - Test both positive cases (valid SQL) and negative cases (should produce diagnostics)
-- Comprehensive test coverage: 61 unit tests + 72 PostgreSQL pattern tests covering DDL parsing, SELECT, INSERT, UPDATE, DELETE, CTEs, subqueries, VIEWs, ALTER TABLE, derived tables, window functions, and advanced expressions
+- Comprehensive test coverage: 71 unit tests + 72 PostgreSQL pattern tests + 80 MySQL real-world queries covering DDL parsing, SELECT, INSERT, UPDATE, DELETE, CTEs, subqueries, VIEWs, ALTER TABLE, derived tables, window functions, and advanced expressions
 - Test-driven development (TDD) approach: write failing tests first, then implement features
 
 ## Style Guidelines
@@ -135,7 +135,7 @@ cargo run -- check --format sarif --schema schema.sql query.sql
 
 ## Current Limitations
 
-- Only PostgreSQL dialect is fully supported (MySQL/SQLite planned)
+- SQLite dialect is not yet supported
 - Type checking is basic (existence only, not full type inference)
 - Functions and stored procedures are skipped (not analyzed)
 - Schema-qualified names (e.g., `public.users`) are not fully resolved
