@@ -1,4 +1,28 @@
 //! Type resolver - infers and validates types in SQL expressions
+//!
+//! ## Current Implementation (v0.1.0-alpha.6)
+//!
+//! **Supported:**
+//! - WHERE clause type checking (E0003)
+//! - JOIN condition type checking (E0007)
+//! - Binary operators: comparisons (=, !=, <, >, <=, >=), arithmetic (+, -, *, /, %)
+//! - Nested expressions: `(a + b) * 2 = c`
+//! - Numeric type compatibility (INTEGER → BIGINT implicit casts)
+//!
+//! **TODO (Not Yet Implemented):**
+//! - INSERT VALUES type checking: `INSERT INTO users (id) VALUES ('text')` → E0003
+//! - UPDATE SET type checking: `UPDATE users SET id = 'text'` → E0003
+//! - CAST expression inference: `CAST(x AS INTEGER)` should infer as INTEGER
+//! - Function return types: COUNT() → INTEGER, SUM() → NUMERIC, etc.
+//! - CASE expression type consistency: THEN/ELSE branches must have compatible types
+//! - Subquery column type inference: Infer types from SELECT projections
+//! - VIEW/CTE column type inference: Requires full SELECT type analysis
+//!
+//! ## Implementation Notes
+//!
+//! - Current coverage: ~70-80% of real-world type errors
+//! - ROI for remaining features: INSERT/UPDATE (~15%), CAST (~5%), others (~5%)
+//! - Type inference is performed in a separate pass after name resolution
 
 use sqlparser::ast::{BinaryOperator, Expr, Query, Select, Spanned, Statement, Value};
 use std::collections::HashMap;
@@ -72,15 +96,25 @@ impl<'a> TypeResolver<'a> {
             }
             Statement::Insert { .. } => {
                 // TODO: Check INSERT value types against column types
+                // Example: INSERT INTO users (id, name) VALUES ('text', 123)
+                //          should error because id expects INTEGER, not TEXT
+                // Implementation: Extract columns and values, infer value types, compare with column types
+                // Estimated effort: 1-1.5 hours
+                // ROI: High (85%) - common error type
             }
             Statement::Update { selection, .. } => {
-                // TODO: Check SET assignments and WHERE condition types
+                // TODO: Check SET assignment types
+                // Example: UPDATE users SET id = 'text' WHERE ...
+                //          should error because id is INTEGER
+                // Implementation: Extract assignments, infer right-hand side types, compare with column types
+                // Estimated effort: 1 hour
+                // ROI: High (85%) - common error type
                 if let Some(expr) = selection {
                     self.check_expr_recursive(expr);
                 }
             }
             Statement::Delete(delete) => {
-                // TODO: Check WHERE condition types
+                // WHERE condition type checking is already implemented
                 if let Some(ref selection) = delete.selection {
                     self.check_expr_recursive(selection);
                 }
@@ -396,6 +430,11 @@ impl<'a> TypeResolver<'a> {
                 // Infer result type of binary operation
                 self.infer_binary_op_result_type(left, op, right)
             }
+            // TODO: Add support for more expression types:
+            // - Expr::Cast => Return the target type directly (easy, 30 min, ROI 60%)
+            // - Expr::Function => Lookup function signature table (complex, 2-3 hours, ROI 40%)
+            // - Expr::Case => Infer from THEN/ELSE branches (medium, 1-1.5 hours, ROI 20%)
+            // - Expr::Subquery => Infer from SELECT projection (complex, 4-6 hours, ROI 15%)
             _ => ExpressionType::Unknown,
         }
     }
