@@ -40,8 +40,6 @@ enum ExpressionType {
     Known(SqlType),
     /// Type is unknown (e.g., subquery, complex expression)
     Unknown,
-    /// Error occurred during type inference
-    Error,
 }
 
 /// Reference to a table available in the current scope
@@ -102,16 +100,20 @@ impl<'a> TypeResolver<'a> {
                 // Estimated effort: 1-1.5 hours
                 // ROI: High (85%) - common error type
             }
-            Statement::Update { selection, .. } => {
+            Statement::Update {
+                selection: Some(expr),
+                ..
+            } => {
                 // TODO: Check SET assignment types
                 // Example: UPDATE users SET id = 'text' WHERE ...
                 //          should error because id is INTEGER
                 // Implementation: Extract assignments, infer right-hand side types, compare with column types
                 // Estimated effort: 1 hour
                 // ROI: High (85%) - common error type
-                if let Some(expr) = selection {
-                    self.check_expr_recursive(expr);
-                }
+                self.check_expr_recursive(expr);
+            }
+            Statement::Update { .. } => {
+                // No WHERE clause, nothing to check yet
             }
             Statement::Delete(delete) => {
                 // WHERE condition type checking is already implemented

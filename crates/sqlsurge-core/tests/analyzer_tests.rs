@@ -1199,9 +1199,6 @@ fn test_multiple_ctes_invalid_reference() {
 
 #[test]
 fn test_large_join_four_tables() {
-    let catalog = setup_catalog();
-    let mut analyzer = Analyzer::new(&catalog);
-
     // Create extended schema
     let extended_schema = r#"
             CREATE TABLE users (id SERIAL PRIMARY KEY, name VARCHAR(100));
@@ -1213,7 +1210,7 @@ fn test_large_join_four_tables() {
     let mut builder = SchemaBuilder::new();
     builder.parse(extended_schema).unwrap();
     let (catalog, _) = builder.build();
-    analyzer = Analyzer::new(&catalog);
+    let mut analyzer = Analyzer::new(&catalog);
 
     let diagnostics = analyzer.analyze(
         "SELECT u.name, o.id, p.name, oi.quantity
@@ -1339,12 +1336,8 @@ fn test_union_column_count_validation() {
             SELECT id FROM orders",
     );
     // Current implementation doesn't validate UNION column count
-    // This is a known limitation
-    assert!(
-        true,
-        "UNION column count validation is not yet implemented: {:?}",
-        diagnostics
-    );
+    // This is a known limitation - just document that the query doesn't crash
+    let _ = diagnostics;
 }
 
 #[test]
