@@ -1039,4 +1039,187 @@ mod tests {
             diagnostics
         );
     }
+
+    // ========== MySQL Dialect Tests ==========
+
+    fn setup_mysql_catalog() -> Catalog {
+        let schema_sql = r#"
+            CREATE TABLE users (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                username VARCHAR(50) NOT NULL,
+                email VARCHAR(255) NOT NULL,
+                age TINYINT UNSIGNED,
+                status ENUM('active', 'inactive', 'banned') DEFAULT 'active',
+                login_count MEDIUMINT UNSIGNED DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY uk_email (email)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+            CREATE TABLE posts (
+                id BIGINT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                title VARCHAR(200) NOT NULL,
+                body MEDIUMTEXT,
+                view_count INT UNSIGNED DEFAULT 0,
+                is_published TINYINT(1) DEFAULT 0,
+                published_at DATETIME,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            ) ENGINE=InnoDB;
+        "#;
+
+        let mut builder = SchemaBuilder::with_dialect(SqlDialect::MySQL);
+        builder.parse(schema_sql).unwrap();
+        let (catalog, _) = builder.build();
+        catalog
+    }
+
+    #[test]
+    fn test_mysql_schema_parsing() {
+        let catalog = setup_mysql_catalog();
+
+        let table = catalog
+            .get_table(&crate::schema::QualifiedName::new("users"))
+            .unwrap();
+
+        // AUTO_INCREMENT column should be NOT NULL
+        let id_col = table.get_column("id").unwrap();
+        assert!(!id_col.nullable, "AUTO_INCREMENT column should be NOT NULL");
+        assert!(id_col.is_primary_key);
+
+        // TINYINT column
+        let age_col = table.get_column("age").unwrap();
+        assert_eq!(age_col.data_type, crate::types::SqlType::TinyInt);
+
+        // ENUM column
+        let status_col = table.get_column("status").unwrap();
+        assert!(
+            matches!(&status_col.data_type, crate::types::SqlType::Custom(name) if name == "ENUM"),
+            "ENUM column should be Custom(\"ENUM\"): {:?}",
+            status_col.data_type
+        );
+
+        // MEDIUMINT column
+        let count_col = table.get_column("login_count").unwrap();
+        assert_eq!(count_col.data_type, crate::types::SqlType::MediumInt);
+    }
+
+    #[test]
+    fn test_mysql_valid_select() {
+        let catalog = setup_mysql_catalog();
+        let mut analyzer = Analyzer::with_dialect(&catalog, SqlDialect::MySQL);
+
+        let diagnostics = analyzer.analyze("SELECT id, username, email, age, status FROM users");
+        assert!(
+            diagnostics.is_empty(),
+            "Valid MySQL SELECT should have no errors: {:?}",
+            diagnostics
+        );
+    }
+
+    #[test]
+    fn test_mysql_join() {
+        let catalog = setup_mysql_catalog();
+        let mut analyzer = Analyzer::with_dialect(&catalog, SqlDialect::MySQL);
+
+        let diagnostics = analyzer.analyze(
+            "SELECT p.title, u.username FROM posts p INNER JOIN users u ON p.user_id = u.id WHERE p.is_published = 1",
+        );
+        assert!(
+            diagnostics.is_empty(),
+            "Valid MySQL JOIN should have no errors: {:?}",
+            diagnostics
+        );
+    }
+
+    #[test]
+    fn test_mysql_insert() {
+        let catalog = setup_mysql_catalog();
+        let mut analyzer = Analyzer::with_dialect(&catalog, SqlDialect::MySQL);
+
+        let diagnostics = analyzer.analyze(
+            "INSERT INTO users (username, email, age, status) VALUES ('test', 'test@example.com', 25, 'active')",
+        );
+        assert!(
+            diagnostics.is_empty(),
+            "Valid MySQL INSERT should have no errors: {:?}",
+            diagnostics
+        );
+    }
+
+    #[test]
+    fn test_mysql_column_not_found() {
+        let catalog = setup_mysql_catalog();
+        let mut analyzer = Analyzer::with_dialect(&catalog, SqlDialect::MySQL);
+
+        let diagnostics = analyzer.analyze("SELECT usrname FROM users");
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(diagnostics[0].kind, DiagnosticKind::ColumnNotFound);
+        assert!(diagnostics[0].message.contains("usrname"));
+    }
+
+    #[test]
+    fn test_mysql_table_not_found() {
+        let catalog = setup_mysql_catalog();
+        let mut analyzer = Analyzer::with_dialect(&catalog, SqlDialect::MySQL);
+
+        let diagnostics = analyzer.analyze("SELECT * FROM nonexistent");
+        assert!(!diagnostics.is_empty());
+        assert_eq!(diagnostics[0].kind, DiagnosticKind::TableNotFound);
+    }
+
+    #[test]
+    fn test_mysql_subquery() {
+        let catalog = setup_mysql_catalog();
+        let mut analyzer = Analyzer::with_dialect(&catalog, SqlDialect::MySQL);
+
+        let diagnostics = analyzer.analyze(
+            "SELECT username FROM users WHERE id IN (SELECT user_id FROM posts WHERE is_published = 1)",
+        );
+        assert!(
+            diagnostics.is_empty(),
+            "Valid MySQL subquery should have no errors: {:?}",
+            diagnostics
+        );
+    }
+
+    #[test]
+    fn test_mysql_cte() {
+        let catalog = setup_mysql_catalog();
+        let mut analyzer = Analyzer::with_dialect(&catalog, SqlDialect::MySQL);
+
+        let diagnostics = analyzer.analyze(
+            "WITH active_users AS (SELECT id, username FROM users WHERE status = 'active') SELECT au.username FROM active_users au",
+        );
+        assert!(
+            diagnostics.is_empty(),
+            "Valid MySQL CTE should have no errors: {:?}",
+            diagnostics
+        );
+    }
+
+    #[test]
+    fn test_mysql_update() {
+        let catalog = setup_mysql_catalog();
+        let mut analyzer = Analyzer::with_dialect(&catalog, SqlDialect::MySQL);
+
+        let diagnostics = analyzer.analyze("UPDATE posts SET is_published = 1 WHERE id = 1");
+        assert!(
+            diagnostics.is_empty(),
+            "Valid MySQL UPDATE should have no errors: {:?}",
+            diagnostics
+        );
+    }
+
+    #[test]
+    fn test_mysql_delete() {
+        let catalog = setup_mysql_catalog();
+        let mut analyzer = Analyzer::with_dialect(&catalog, SqlDialect::MySQL);
+
+        let diagnostics = analyzer.analyze("DELETE FROM posts WHERE user_id = 1");
+        assert!(
+            diagnostics.is_empty(),
+            "Valid MySQL DELETE should have no errors: {:?}",
+            diagnostics
+        );
+    }
 }

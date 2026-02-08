@@ -7,7 +7,9 @@ use sqlparser::ast::DataType;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SqlType {
     // Numeric types
+    TinyInt,
     SmallInt,
+    MediumInt,
     Integer,
     BigInt,
     Decimal {
@@ -65,12 +67,14 @@ impl SqlType {
     /// Convert from sqlparser's DataType to our internal SqlType
     pub fn from_ast(data_type: &DataType) -> Self {
         match data_type {
-            DataType::SmallInt(_) => SqlType::SmallInt,
+            DataType::TinyInt(_) | DataType::UnsignedTinyInt(_) => SqlType::TinyInt,
+            DataType::SmallInt(_) | DataType::UnsignedSmallInt(_) => SqlType::SmallInt,
             DataType::Int2(_) => SqlType::SmallInt,
-            DataType::Integer(_) => SqlType::Integer,
-            DataType::Int(_) => SqlType::Integer,
+            DataType::MediumInt(_) | DataType::UnsignedMediumInt(_) => SqlType::MediumInt,
+            DataType::Integer(_) | DataType::UnsignedInteger(_) => SqlType::Integer,
+            DataType::Int(_) | DataType::UnsignedInt(_) => SqlType::Integer,
             DataType::Int4(_) => SqlType::Integer,
-            DataType::BigInt(_) => SqlType::BigInt,
+            DataType::BigInt(_) | DataType::UnsignedBigInt(_) => SqlType::BigInt,
             DataType::Int8(_) => SqlType::BigInt,
 
             DataType::Real => SqlType::Real,
@@ -118,6 +122,11 @@ impl SqlType {
                 with_timezone: matches!(tz, sqlparser::ast::TimezoneInfo::WithTimeZone),
             },
 
+            DataType::Datetime(precision) => SqlType::Timestamp {
+                precision: *precision,
+                with_timezone: false,
+            },
+
             DataType::Interval => SqlType::Interval,
 
             DataType::Boolean | DataType::Bool => SqlType::Boolean,
@@ -126,6 +135,8 @@ impl SqlType {
 
             DataType::JSON => SqlType::Json,
             DataType::JSONB => SqlType::Jsonb,
+
+            DataType::Enum(..) => SqlType::Custom("ENUM".to_string()),
 
             DataType::Array(inner) => match inner {
                 sqlparser::ast::ArrayElemTypeDef::AngleBracket(dt) => {
@@ -171,13 +182,17 @@ impl SqlType {
         use SqlType::*;
         match (self, other) {
             // Numeric type coercion
-            (SmallInt, Integer | BigInt) => TypeCompatibility::ImplicitCast,
+            (TinyInt, SmallInt | MediumInt | Integer | BigInt) => TypeCompatibility::ImplicitCast,
+            (SmallInt, MediumInt | Integer | BigInt) => TypeCompatibility::ImplicitCast,
+            (MediumInt, Integer | BigInt) => TypeCompatibility::ImplicitCast,
             (Integer, BigInt) => TypeCompatibility::ImplicitCast,
-            (SmallInt | Integer | BigInt, Real | DoublePrecision) => {
+            (TinyInt | SmallInt | MediumInt | Integer | BigInt, Real | DoublePrecision) => {
                 TypeCompatibility::ImplicitCast
             }
             (Real, DoublePrecision) => TypeCompatibility::ImplicitCast,
-            (SmallInt | Integer | BigInt, Decimal { .. }) => TypeCompatibility::ImplicitCast,
+            (TinyInt | SmallInt | MediumInt | Integer | BigInt, Decimal { .. }) => {
+                TypeCompatibility::ImplicitCast
+            }
 
             // String type coercion
             (Char { .. }, Varchar { .. } | Text) => TypeCompatibility::ImplicitCast,
@@ -194,7 +209,9 @@ impl SqlType {
     /// Get a human-readable name for this type
     pub fn display_name(&self) -> String {
         match self {
+            SqlType::TinyInt => "tinyint".to_string(),
             SqlType::SmallInt => "smallint".to_string(),
+            SqlType::MediumInt => "mediumint".to_string(),
             SqlType::Integer => "integer".to_string(),
             SqlType::BigInt => "bigint".to_string(),
             SqlType::Decimal { precision, scale } => match (precision, scale) {

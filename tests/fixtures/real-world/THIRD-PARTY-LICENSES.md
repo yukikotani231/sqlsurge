@@ -55,6 +55,49 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
+## Chinook Database (MySQL version)
+
+- Source: https://github.com/lerocha/chinook-database
+- Files: `chinook-mysql-schema.sql`, `chinook-mysql-queries.sql`, `chinook-mysql-invalid-queries.sql`
+- License: MIT License
+
+Copyright (c) 2008-2024 Luis Rocha
+
+(Same MIT License as above)
+
+## Sakila Database (MySQL version)
+
+- Source: https://github.com/jOOQ/sakila
+- Files: `sakila-mysql-schema.sql`, `sakila-mysql-queries.sql`, `sakila-mysql-invalid-queries.sql`
+- License: BSD 2-Clause "Simplified" License
+
+Copyright (c) 2017, Data Geekery GmbH.
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+Original Sakila database is Copyright (c) MySQL AB and is licensed under the
+New BSD License. See https://dev.mysql.com/doc/sakila/en/ for details.
+
 ## Northwind (PostgreSQL port)
 
 - Source: https://github.com/pthom/northwind_psql
