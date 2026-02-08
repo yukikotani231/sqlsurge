@@ -1,6 +1,7 @@
 //! SQL analyzer module
 
 mod resolver;
+mod type_resolver;
 
 use sqlparser::parser::Parser;
 
@@ -9,6 +10,7 @@ use crate::error::{Diagnostic, DiagnosticKind, Span};
 use crate::schema::Catalog;
 
 pub use resolver::NameResolver;
+use type_resolver::TypeResolver;
 
 /// SQL Analyzer - validates SQL against a schema catalog
 pub struct Analyzer<'a> {
@@ -53,9 +55,18 @@ impl<'a> Analyzer<'a> {
 
         // Analyze each statement
         for stmt in &statements {
+            // Phase 1: Name resolution
             let mut resolver = NameResolver::new(self.catalog);
             resolver.resolve_statement(stmt);
+
+            // Phase 2: Type inference and checking
+            let mut type_resolver = TypeResolver::new(self.catalog);
+            type_resolver.inherit_scope(&resolver);
+            type_resolver.check_statement(stmt);
+
+            // Collect diagnostics from both phases
             self.diagnostics.extend(resolver.into_diagnostics());
+            self.diagnostics.extend(type_resolver.into_diagnostics());
         }
 
         std::mem::take(&mut self.diagnostics)

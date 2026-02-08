@@ -11,35 +11,35 @@ use crate::schema::{Catalog, QualifiedName, TableDef};
 
 /// Resolved table reference in a query
 #[derive(Debug, Clone)]
-struct TableRef {
+pub(super) struct TableRef {
     /// The actual table definition
-    table: QualifiedName,
+    pub(super) table: QualifiedName,
     /// Alias used in the query (if any)
     #[allow(dead_code)]
-    alias: Option<String>,
+    pub(super) alias: Option<String>,
     /// If this is a VIEW reference, the column names from the VIEW definition
-    view_columns: Option<Vec<String>>,
+    pub(super) view_columns: Option<Vec<String>>,
     /// If this is a derived table (subquery in FROM), the inferred column names
-    derived_columns: Option<Vec<String>>,
+    pub(super) derived_columns: Option<Vec<String>>,
 }
 
 /// CTE (Common Table Expression) definition
 #[derive(Debug, Clone)]
-struct CteDefinition {
+pub(super) struct CteDefinition {
     /// CTE name
     #[allow(dead_code)]
-    name: String,
+    pub(super) name: String,
     /// Column names inferred from the CTE query
-    columns: Vec<String>,
+    pub(super) columns: Vec<String>,
 }
 
 /// Name resolver for SQL queries
 pub struct NameResolver<'a> {
     catalog: &'a Catalog,
     /// Current scope's table references (alias/name -> TableRef)
-    tables: HashMap<String, TableRef>,
+    pub(super) tables: HashMap<String, TableRef>,
     /// CTEs available in current scope (name -> CteDefinition)
-    ctes: HashMap<String, CteDefinition>,
+    pub(super) ctes: HashMap<String, CteDefinition>,
     /// SELECT aliases visible in ORDER BY (set before resolving ORDER BY)
     select_aliases: Vec<String>,
     /// Collected diagnostics
