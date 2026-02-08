@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.5] - 2026-02-08
+
+### Added
+- **MySQL dialect support**: Full schema parsing and query validation for MySQL
+- MySQL-specific types: `TINYINT`, `MEDIUMINT`, `UNSIGNED` integer variants, `DATETIME`, inline `ENUM`
+- `AUTO_INCREMENT` handling with implicit NOT NULL inference
+- 10 MySQL unit tests covering schema parsing, SELECT, JOIN, INSERT, UPDATE, DELETE, subquery, CTE, and error detection
+- Real-world MySQL test fixtures:
+  - **Sakila** (BSD): 16 tables, 40 valid queries, 12 error detection tests
+  - **Chinook MySQL** (MIT): 11 tables, 40 valid queries, 12 error detection tests
+
 ## [0.1.0-alpha.4] - 2026-02-08
 
 ### Added
@@ -91,7 +102,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - No support for VIEWs, functions, or stored procedures
 - Derived table (subquery in FROM) column resolution is incomplete
 
-[Unreleased]: https://github.com/yukikotani231/sqlsurge/compare/v0.1.0-alpha.4...HEAD
+[Unreleased]: https://github.com/yukikotani231/sqlsurge/compare/v0.1.0-alpha.5...HEAD
+[0.1.0-alpha.5]: https://github.com/yukikotani231/sqlsurge/compare/v0.1.0-alpha.4...v0.1.0-alpha.5
 [0.1.0-alpha.4]: https://github.com/yukikotani231/sqlsurge/compare/v0.1.0-alpha.3...v0.1.0-alpha.4
 [0.1.0-alpha.3]: https://github.com/yukikotani231/sqlsurge/compare/v0.1.0-alpha.2...v0.1.0-alpha.3
 [0.1.0-alpha.2]: https://github.com/yukikotani231/sqlsurge/compare/v0.1.0-alpha.1...v0.1.0-alpha.2
