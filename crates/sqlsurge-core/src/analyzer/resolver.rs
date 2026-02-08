@@ -1,8 +1,8 @@
 //! Name resolver - resolves table and column references
 
 use sqlparser::ast::{
-    Assignment, AssignmentTarget, Delete, Expr, FunctionArguments, GroupByExpr, Ident, Insert,
-    ObjectName, Query, Select, SelectItem, SetExpr, Statement, TableFactor, TableWithJoins, Values,
+    Assignment, AssignmentTarget, Delete, Expr, GroupByExpr, Ident, Insert, ObjectName, Query,
+    Select, SelectItem, SetExpr, Statement, Subscript, TableFactor, TableWithJoins, Values,
 };
 use std::collections::HashMap;
 
@@ -19,6 +19,8 @@ struct TableRef {
     alias: Option<String>,
     /// If this is a VIEW reference, the column names from the VIEW definition
     view_columns: Option<Vec<String>>,
+    /// If this is a derived table (subquery in FROM), the inferred column names
+    derived_columns: Option<Vec<String>>,
 }
 
 /// CTE (Common Table Expression) definition
@@ -38,6 +40,8 @@ pub struct NameResolver<'a> {
     tables: HashMap<String, TableRef>,
     /// CTEs available in current scope (name -> CteDefinition)
     ctes: HashMap<String, CteDefinition>,
+    /// SELECT aliases visible in ORDER BY (set before resolving ORDER BY)
+    select_aliases: Vec<String>,
     /// Collected diagnostics
     diagnostics: Vec<Diagnostic>,
 }
@@ -47,6 +51,7 @@ impl<'a> NameResolver<'a> {
         Self {
             catalog,
             tables: HashMap::new(),
+            select_aliases: Vec::new(),
             ctes: HashMap::new(),
             diagnostics: Vec::new(),
         }
@@ -62,10 +67,11 @@ impl<'a> NameResolver<'a> {
             Statement::Update {
                 table,
                 assignments,
+                from,
                 selection,
                 ..
             } => {
-                self.resolve_update(table, assignments, selection.as_ref());
+                self.resolve_update(table, assignments, from.as_ref(), selection.as_ref());
             }
             Statement::Delete(delete) => {
                 self.resolve_delete(delete);
@@ -167,10 +173,16 @@ impl<'a> NameResolver<'a> {
         &mut self,
         table: &TableWithJoins,
         assignments: &[Assignment],
+        from: Option<&TableWithJoins>,
         selection: Option<&Expr>,
     ) {
         // Resolve and register the table
         self.resolve_table_with_joins(table);
+
+        // Resolve FROM clause (PostgreSQL: UPDATE ... FROM ...)
+        if let Some(from_table) = from {
+            self.resolve_table_with_joins(from_table);
+        }
 
         // Get table definition for column validation
         let table_name = table_with_joins_to_name(&table.relation);
@@ -234,6 +246,13 @@ impl<'a> NameResolver<'a> {
             self.resolve_table_with_joins(table);
         }
 
+        // Resolve USING clause (PostgreSQL: DELETE ... USING ...)
+        if let Some(using_tables) = &delete.using {
+            for table in using_tables {
+                self.resolve_table_with_joins(table);
+            }
+        }
+
         // Resolve WHERE clause
         if let Some(where_expr) = &delete.selection {
             self.resolve_expr(where_expr);
@@ -244,31 +263,44 @@ impl<'a> NameResolver<'a> {
     fn resolve_query(&mut self, query: &Query) {
         // Handle CTEs (WITH clause)
         if let Some(with) = &query.with {
+            let is_recursive = with.recursive;
+
             for cte in &with.cte_tables {
-                // Save current table scope
-                let saved_tables = self.tables.clone();
-
-                // Resolve the CTE query first (to validate it) in isolated scope
-                self.resolve_set_expr(&cte.query.body);
-
-                // Extract column names from the CTE
                 let cte_name = cte.alias.name.value.clone();
+
+                // For recursive CTEs, infer columns and register the CTE *before*
+                // resolving the body, so the recursive part can reference itself.
                 let columns = if !cte.alias.columns.is_empty() {
-                    // Explicit column list: WITH foo (a, b) AS ...
                     cte.alias
                         .columns
                         .iter()
                         .map(|c| c.name.value.clone())
                         .collect()
                 } else {
-                    // Infer from SELECT projection
                     self.infer_cte_columns(&cte.query.body)
                 };
+
+                if is_recursive {
+                    // Pre-register the CTE so recursive references resolve
+                    self.ctes.insert(
+                        cte_name.clone(),
+                        CteDefinition {
+                            name: cte_name.clone(),
+                            columns: columns.clone(),
+                        },
+                    );
+                }
+
+                // Save current table scope
+                let saved_tables = self.tables.clone();
+
+                // Resolve the CTE query (to validate it) in isolated scope
+                self.resolve_set_expr(&cte.query.body);
 
                 // Restore table scope (CTEs shouldn't pollute outer scope with their internal tables)
                 self.tables = saved_tables;
 
-                // Register the CTE
+                // Register the CTE (or update if already pre-registered)
                 self.ctes.insert(
                     cte_name.clone(),
                     CteDefinition {
@@ -281,10 +313,46 @@ impl<'a> NameResolver<'a> {
 
         // Resolve the main query body
         self.resolve_set_expr(&query.body);
+
+        // Resolve ORDER BY clause (with SELECT aliases in scope)
+        if let Some(order_by) = &query.order_by {
+            // Collect SELECT aliases so ORDER BY can reference them
+            let saved_aliases = std::mem::take(&mut self.select_aliases);
+            self.select_aliases = self.collect_select_aliases(&query.body);
+            for ob in &order_by.exprs {
+                self.resolve_expr(&ob.expr);
+            }
+            self.select_aliases = saved_aliases;
+        }
+    }
+
+    /// Collect aliases from SELECT projection for use in ORDER BY resolution
+    fn collect_select_aliases(&self, set_expr: &SetExpr) -> Vec<String> {
+        let mut aliases = Vec::new();
+        if let SetExpr::Select(select) = set_expr {
+            for item in &select.projection {
+                match item {
+                    SelectItem::ExprWithAlias { alias, .. } => {
+                        aliases.push(alias.value.clone());
+                    }
+                    SelectItem::UnnamedExpr(Expr::Identifier(ident)) => {
+                        // Column name also acts as implicit alias
+                        aliases.push(ident.value.clone());
+                    }
+                    _ => {}
+                }
+            }
+        }
+        aliases
     }
 
     /// Infer column names from a SELECT body
     fn infer_cte_columns(&self, set_expr: &SetExpr) -> Vec<String> {
+        // For UNION/INTERSECT/EXCEPT, infer from the left side
+        if let SetExpr::SetOperation { left, .. } = set_expr {
+            return self.infer_cte_columns(left);
+        }
+
         let mut columns = Vec::new();
 
         if let SetExpr::Select(select) = set_expr {
@@ -407,8 +475,33 @@ impl<'a> NameResolver<'a> {
     /// Resolve a table factor (table name, subquery, etc.)
     fn resolve_table_factor(&mut self, factor: &TableFactor) {
         match factor {
-            TableFactor::Table { name, alias, .. } => {
+            TableFactor::Table {
+                name, alias, args, ..
+            } => {
                 let table_name = object_name_to_qualified(name);
+
+                // Table-valued function call (e.g., generate_series(...))
+                // Register alias if present, skip table existence check
+                if args.is_some() {
+                    let alias_name = alias.as_ref().map(|a| a.name.value.clone());
+                    if let Some(a_name) = alias_name {
+                        let columns = alias
+                            .as_ref()
+                            .map(|a| a.columns.iter().map(|c| c.name.value.clone()).collect())
+                            .filter(|cols: &Vec<String>| !cols.is_empty())
+                            .unwrap_or_default();
+                        self.tables.insert(
+                            a_name.clone(),
+                            TableRef {
+                                table: QualifiedName::new(&a_name),
+                                alias: Some(a_name),
+                                view_columns: None,
+                                derived_columns: Some(columns),
+                            },
+                        );
+                    }
+                    return;
+                }
 
                 // Check if it's a CTE first
                 let is_cte = self.ctes.contains_key(&table_name.name);
@@ -451,19 +544,72 @@ impl<'a> NameResolver<'a> {
                         table: table_name,
                         alias: alias_name,
                         view_columns,
+                        derived_columns: None,
                     },
                 );
             }
             TableFactor::Derived {
-                subquery, alias, ..
+                lateral,
+                subquery,
+                alias,
             } => {
-                // Subquery - resolve it but don't add to scope (for now)
+                // Save current table scope so subquery resolution doesn't leak
+                let saved_tables = self.tables.clone();
+
+                // Non-LATERAL subqueries cannot reference outer FROM tables,
+                // so clear the table scope. LATERAL subqueries can see outer tables.
+                if !lateral {
+                    self.tables.clear();
+                }
+
+                // Resolve subquery
                 self.resolve_query(subquery);
-                // TODO: Handle subquery columns in scope
+
+                // Infer column names from the subquery projection
+                let derived_columns = self.infer_cte_columns(&subquery.body);
+
+                // Restore table scope
+                self.tables = saved_tables;
+
+                // Register derived table alias in outer scope
                 if let Some(a) = alias {
-                    // Register derived table with alias
-                    // For now, we skip column resolution for derived tables
-                    let _ = a.name.value.clone();
+                    let alias_name = a.name.value.clone();
+                    // Use explicit column aliases if provided: (SELECT ...) AS v(col1, col2)
+                    let columns = if !a.columns.is_empty() {
+                        a.columns.iter().map(|c| c.name.value.clone()).collect()
+                    } else {
+                        derived_columns
+                    };
+                    self.tables.insert(
+                        alias_name.clone(),
+                        TableRef {
+                            table: QualifiedName::new(&alias_name),
+                            alias: Some(alias_name),
+                            view_columns: None,
+                            derived_columns: Some(columns),
+                        },
+                    );
+                }
+            }
+            TableFactor::TableFunction { alias, .. } | TableFactor::Function { alias, .. } => {
+                // Table-valued functions (e.g., generate_series, unnest)
+                // Register alias if present, with empty column list (skip column validation)
+                if let Some(a) = alias {
+                    let alias_name = a.name.value.clone();
+                    let columns = if !a.columns.is_empty() {
+                        a.columns.iter().map(|c| c.name.value.clone()).collect()
+                    } else {
+                        vec![] // No column inference possible for functions
+                    };
+                    self.tables.insert(
+                        alias_name.clone(),
+                        TableRef {
+                            table: QualifiedName::new(&alias_name),
+                            alias: Some(alias_name),
+                            view_columns: None,
+                            derived_columns: Some(columns),
+                        },
+                    );
                 }
             }
             _ => {}
@@ -532,20 +678,22 @@ impl<'a> NameResolver<'a> {
             Expr::Nested(inner) => {
                 self.resolve_expr(inner);
             }
-            Expr::Function(func) => match &func.args {
-                FunctionArguments::None => {}
-                FunctionArguments::Subquery(_) => {}
-                FunctionArguments::List(args) => {
-                    for arg in &args.args {
-                        if let sqlparser::ast::FunctionArg::Unnamed(
-                            sqlparser::ast::FunctionArgExpr::Expr(e),
-                        ) = arg
-                        {
-                            self.resolve_expr(e);
-                        }
+            Expr::Function(func) => {
+                self.resolve_function_args_list(&func.args);
+                // Resolve FILTER (WHERE ...) clause
+                if let Some(filter) = &func.filter {
+                    self.resolve_expr(filter);
+                }
+                // Resolve OVER (PARTITION BY ... ORDER BY ...) clause
+                if let Some(sqlparser::ast::WindowType::WindowSpec(spec)) = &func.over {
+                    for e in &spec.partition_by {
+                        self.resolve_expr(e);
+                    }
+                    for ob in &spec.order_by {
+                        self.resolve_expr(&ob.expr);
                     }
                 }
-            },
+            }
             Expr::InList { expr, list, .. } => {
                 self.resolve_expr(expr);
                 for e in list {
@@ -554,7 +702,9 @@ impl<'a> NameResolver<'a> {
             }
             Expr::InSubquery { expr, subquery, .. } => {
                 self.resolve_expr(expr);
+                let saved_tables = self.tables.clone();
                 self.resolve_query(subquery);
+                self.tables = saved_tables;
             }
             Expr::Between {
                 expr, low, high, ..
@@ -583,13 +733,171 @@ impl<'a> NameResolver<'a> {
                 }
             }
             Expr::Subquery(query) => {
+                let saved_tables = self.tables.clone();
                 self.resolve_query(query);
+                self.tables = saved_tables;
             }
             Expr::IsNull(e) | Expr::IsNotNull(e) => {
                 self.resolve_expr(e);
             }
-            // Literals and other expressions don't need resolution
+            Expr::Cast { expr, .. } => {
+                self.resolve_expr(expr);
+            }
+            Expr::Extract { expr, .. } => {
+                self.resolve_expr(expr);
+            }
+            Expr::Substring {
+                expr,
+                substring_from,
+                substring_for,
+                ..
+            } => {
+                self.resolve_expr(expr);
+                if let Some(from) = substring_from {
+                    self.resolve_expr(from);
+                }
+                if let Some(for_expr) = substring_for {
+                    self.resolve_expr(for_expr);
+                }
+            }
+            Expr::Trim {
+                expr, trim_what, ..
+            } => {
+                self.resolve_expr(expr);
+                if let Some(what) = trim_what {
+                    self.resolve_expr(what);
+                }
+            }
+            Expr::Position { expr, r#in } => {
+                self.resolve_expr(expr);
+                self.resolve_expr(r#in);
+            }
+            Expr::Like { expr, pattern, .. } | Expr::ILike { expr, pattern, .. } => {
+                self.resolve_expr(expr);
+                self.resolve_expr(pattern);
+            }
+            Expr::IsTrue(e) | Expr::IsFalse(e) | Expr::IsNotTrue(e) | Expr::IsNotFalse(e) => {
+                self.resolve_expr(e);
+            }
+            Expr::JsonAccess { value, .. } => {
+                self.resolve_expr(value);
+            }
+            Expr::AnyOp { left, right, .. } | Expr::AllOp { left, right, .. } => {
+                self.resolve_expr(left);
+                self.resolve_expr(right);
+            }
+            Expr::Exists { subquery, .. } => {
+                let saved_tables = self.tables.clone();
+                self.resolve_query(subquery);
+                self.tables = saved_tables;
+            }
+            Expr::AtTimeZone {
+                timestamp,
+                time_zone,
+            } => {
+                self.resolve_expr(timestamp);
+                self.resolve_expr(time_zone);
+            }
+            Expr::Collate { expr, .. } => {
+                self.resolve_expr(expr);
+            }
+            Expr::Ceil { expr, .. } | Expr::Floor { expr, .. } => {
+                self.resolve_expr(expr);
+            }
+            Expr::Overlay {
+                expr,
+                overlay_what,
+                overlay_from,
+                overlay_for,
+            } => {
+                self.resolve_expr(expr);
+                self.resolve_expr(overlay_what);
+                self.resolve_expr(overlay_from);
+                if let Some(for_expr) = overlay_for {
+                    self.resolve_expr(for_expr);
+                }
+            }
+            Expr::IsDistinctFrom(a, b) | Expr::IsNotDistinctFrom(a, b) => {
+                self.resolve_expr(a);
+                self.resolve_expr(b);
+            }
+            Expr::IsUnknown(e) | Expr::IsNotUnknown(e) => {
+                self.resolve_expr(e);
+            }
+            Expr::SimilarTo { expr, pattern, .. } | Expr::RLike { expr, pattern, .. } => {
+                self.resolve_expr(expr);
+                self.resolve_expr(pattern);
+            }
+            Expr::Tuple(exprs) => {
+                for e in exprs {
+                    self.resolve_expr(e);
+                }
+            }
+            Expr::Array(arr) => {
+                for e in &arr.elem {
+                    self.resolve_expr(e);
+                }
+            }
+            Expr::Subscript { expr, subscript } => {
+                self.resolve_expr(expr);
+                match subscript.as_ref() {
+                    Subscript::Index { index } => {
+                        self.resolve_expr(index);
+                    }
+                    Subscript::Slice {
+                        lower_bound,
+                        upper_bound,
+                        stride,
+                    } => {
+                        if let Some(lb) = lower_bound {
+                            self.resolve_expr(lb);
+                        }
+                        if let Some(ub) = upper_bound {
+                            self.resolve_expr(ub);
+                        }
+                        if let Some(s) = stride {
+                            self.resolve_expr(s);
+                        }
+                    }
+                }
+            }
+            Expr::Method(method) => {
+                self.resolve_expr(&method.expr);
+                for func in &method.method_chain {
+                    self.resolve_function_args_list(&func.args);
+                }
+            }
+            Expr::GroupingSets(sets) | Expr::Cube(sets) | Expr::Rollup(sets) => {
+                for set in sets {
+                    for e in set {
+                        self.resolve_expr(e);
+                    }
+                }
+            }
+            // Literals, intervals, and other expressions don't need column resolution
             _ => {}
+        }
+    }
+
+    /// Resolve function arguments (handles Named, ExprNamed, and Unnamed variants)
+    fn resolve_function_args_list(&mut self, args: &sqlparser::ast::FunctionArguments) {
+        if let sqlparser::ast::FunctionArguments::List(arg_list) = args {
+            for arg in &arg_list.args {
+                match arg {
+                    sqlparser::ast::FunctionArg::Unnamed(
+                        sqlparser::ast::FunctionArgExpr::Expr(e),
+                    ) => {
+                        self.resolve_expr(e);
+                    }
+                    sqlparser::ast::FunctionArg::Named { arg, .. }
+                    | sqlparser::ast::FunctionArg::ExprNamed { arg, .. } => {
+                        if let sqlparser::ast::FunctionArgExpr::Expr(e) = arg {
+                            self.resolve_expr(e);
+                        }
+                    }
+                    _ => {}
+                }
+            }
         }
     }
 
@@ -602,8 +910,27 @@ impl<'a> NameResolver<'a> {
             let table_alias = &table_id.value;
             // Qualified column reference (table.column)
             if let Some(table_ref) = self.tables.get(table_alias) {
-                // Check if it's a CTE first
-                if let Some(cte) = self.ctes.get(&table_ref.table.name) {
+                // Check derived table first
+                if let Some(derived_cols) = &table_ref.derived_columns {
+                    // Empty column list means we can't validate (e.g., table-valued functions)
+                    if !derived_cols.is_empty()
+                        && !derived_cols
+                            .iter()
+                            .any(|c| c.eq_ignore_ascii_case(column_name))
+                        && !derived_cols.iter().any(|c| c.starts_with("?column?"))
+                    {
+                        self.diagnostics.push(
+                            Diagnostic::error(
+                                DiagnosticKind::ColumnNotFound,
+                                format!(
+                                    "Column '{}' not found in subquery '{}'",
+                                    column_name, table_alias
+                                ),
+                            )
+                            .with_span(column_span),
+                        );
+                    }
+                } else if let Some(cte) = self.ctes.get(&table_ref.table.name) {
                     // Validate against CTE columns
                     if !cte.columns.contains(column_name) {
                         self.diagnostics.push(
@@ -666,8 +993,18 @@ impl<'a> NameResolver<'a> {
             let mut found_in: Vec<&str> = Vec::new();
 
             for (name, table_ref) in &self.tables {
-                // Check CTE first
-                if let Some(cte) = self.ctes.get(&table_ref.table.name) {
+                // Check derived table first
+                if let Some(derived_cols) = &table_ref.derived_columns {
+                    // Empty column list = can't validate, assume match
+                    if derived_cols.is_empty()
+                        || derived_cols
+                            .iter()
+                            .any(|c| c.eq_ignore_ascii_case(column_name))
+                    {
+                        found_in.push(name);
+                    }
+                } else if let Some(cte) = self.ctes.get(&table_ref.table.name) {
+                    // Check CTE
                     if cte.columns.contains(column_name) {
                         found_in.push(name);
                     }
@@ -688,6 +1025,15 @@ impl<'a> NameResolver<'a> {
 
             match found_in.len() {
                 0 => {
+                    // Check if it's a SELECT alias (valid in ORDER BY)
+                    if self
+                        .select_aliases
+                        .iter()
+                        .any(|a| a.eq_ignore_ascii_case(column_name))
+                    {
+                        return;
+                    }
+
                     // Column not found in any table
                     let mut suggestions = Vec::new();
                     for table_ref in self.tables.values() {
