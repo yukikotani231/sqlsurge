@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.6] - 2026-02-08
+
+### Added
+- **Type inference engine**: SQL expression type checking for WHERE clauses and JOIN conditions
+  - E0003 (type-mismatch): Detect incompatible type comparisons (e.g., `WHERE id = 'text'`)
+  - E0007 (join-type-mismatch): Detect JOIN condition type incompatibilities (e.g., `ON users.id = orders.name`)
+  - Binary operator type validation: comparisons (=, !=, <, >, <=, >=) and arithmetic (+, -, *, /)
+  - Nested expression type inference: `(a + b) * 2 = c`
+  - Numeric type compatibility: implicit casts between TINYINT, SMALLINT, INTEGER, BIGINT
+
+### Changed
+- Reorganized test suite: moved integration tests to `tests/analyzer_tests.rs` (74 tests)
+- Improved API documentation with doc-test examples
+- Replaced `unwrap()` with `expect()` in catalog code for better error messages
+
 ## [0.1.0-alpha.5] - 2026-02-08
 
 ### Added
@@ -102,7 +117,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - No support for VIEWs, functions, or stored procedures
 - Derived table (subquery in FROM) column resolution is incomplete
 
-[Unreleased]: https://github.com/yukikotani231/sqlsurge/compare/v0.1.0-alpha.5...HEAD
+[Unreleased]: https://github.com/yukikotani231/sqlsurge/compare/v0.1.0-alpha.6...HEAD
+[0.1.0-alpha.6]: https://github.com/yukikotani231/sqlsurge/compare/v0.1.0-alpha.5...v0.1.0-alpha.6
 [0.1.0-alpha.5]: https://github.com/yukikotani231/sqlsurge/compare/v0.1.0-alpha.4...v0.1.0-alpha.5
 [0.1.0-alpha.4]: https://github.com/yukikotani231/sqlsurge/compare/v0.1.0-alpha.3...v0.1.0-alpha.4
 [0.1.0-alpha.3]: https://github.com/yukikotani231/sqlsurge/compare/v0.1.0-alpha.2...v0.1.0-alpha.3
