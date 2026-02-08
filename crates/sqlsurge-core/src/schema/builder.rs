@@ -5,6 +5,7 @@ use sqlparser::ast::{
     UserDefinedTypeRepresentation,
 };
 use sqlparser::parser::Parser;
+use sqlparser::tokenizer::Token;
 
 use crate::dialect::SqlDialect;
 use crate::error::{Diagnostic, DiagnosticKind};
@@ -494,6 +495,15 @@ impl SchemaBuilder {
                     };
                     col.identity = Some(kind);
                     col.nullable = false; // IDENTITY columns are implicitly NOT NULL
+                }
+            }
+            ColumnOption::DialectSpecific(tokens) => {
+                // MySQL AUTO_INCREMENT
+                if tokens
+                    .iter()
+                    .any(|t| matches!(t, Token::Word(w) if w.value == "AUTO_INCREMENT"))
+                {
+                    col.nullable = false; // AUTO_INCREMENT implies NOT NULL
                 }
             }
             _ => {}
