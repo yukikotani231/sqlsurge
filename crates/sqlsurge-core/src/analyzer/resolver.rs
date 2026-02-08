@@ -15,6 +15,9 @@ pub(super) struct TableRef {
     /// The actual table definition
     pub(super) table: QualifiedName,
     /// Alias used in the query (if any)
+    ///
+    /// Note: Currently unused but reserved for future error message improvements
+    /// to show the user-specified alias in diagnostics instead of the table name.
     #[allow(dead_code)]
     pub(super) alias: Option<String>,
     /// If this is a VIEW reference, the column names from the VIEW definition
@@ -27,6 +30,9 @@ pub(super) struct TableRef {
 #[derive(Debug, Clone)]
 pub(super) struct CteDefinition {
     /// CTE name
+    ///
+    /// Note: Currently unused but may be useful for future diagnostic messages
+    /// to reference the CTE by its original name.
     #[allow(dead_code)]
     pub(super) name: String,
     /// Column names inferred from the CTE query
@@ -47,6 +53,9 @@ pub struct NameResolver<'a> {
 }
 
 impl<'a> NameResolver<'a> {
+    /// Create a new name resolver for the given catalog
+    ///
+    /// The resolver will use the catalog to validate table and column references.
     pub fn new(catalog: &'a Catalog) -> Self {
         Self {
             catalog,
@@ -58,6 +67,9 @@ impl<'a> NameResolver<'a> {
     }
 
     /// Resolve names in a statement
+    ///
+    /// Validates all table and column references in the statement against the catalog.
+    /// Diagnostics are collected internally and can be retrieved with `into_diagnostics()`.
     pub fn resolve_statement(&mut self, stmt: &Statement) {
         match stmt {
             Statement::Query(query) => self.resolve_query(query),
@@ -1080,6 +1092,9 @@ impl<'a> NameResolver<'a> {
     }
 
     /// Consume the resolver and return collected diagnostics
+    /// Consume the resolver and return collected diagnostics
+    ///
+    /// Returns all diagnostics collected during name resolution.
     pub fn into_diagnostics(self) -> Vec<Diagnostic> {
         self.diagnostics
     }
