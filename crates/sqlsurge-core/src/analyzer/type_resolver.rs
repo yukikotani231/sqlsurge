@@ -169,7 +169,10 @@ impl<'a> TypeResolver<'a> {
 
         // Extract the constraint from the join operator
         let constraint = match &join.join_operator {
-            JoinOperator::Inner(c) | JoinOperator::LeftOuter(c) | JoinOperator::RightOuter(c) | JoinOperator::FullOuter(c) => c,
+            JoinOperator::Inner(c)
+            | JoinOperator::LeftOuter(c)
+            | JoinOperator::RightOuter(c)
+            | JoinOperator::FullOuter(c) => c,
             JoinOperator::CrossJoin | JoinOperator::CrossApply | JoinOperator::OuterApply => {
                 return; // No condition to check
             }
@@ -201,7 +204,8 @@ impl<'a> TypeResolver<'a> {
 
                         // If either direction allows implicit cast, the comparison is valid
                         if compat_lr == TypeCompatibility::ExplicitCast
-                            && compat_rl == TypeCompatibility::ExplicitCast {
+                            && compat_rl == TypeCompatibility::ExplicitCast
+                        {
                             let span = Span::from_sqlparser(&left.span());
                             self.diagnostics.push(
                                 Diagnostic::error(
@@ -325,7 +329,8 @@ impl<'a> TypeResolver<'a> {
 
                     // If either direction allows implicit cast, the comparison is valid
                     if compat_lr == TypeCompatibility::ExplicitCast
-                        && compat_rl == TypeCompatibility::ExplicitCast {
+                        && compat_rl == TypeCompatibility::ExplicitCast
+                    {
                         // Types are not implicitly compatible in either direction
                         let span = Span::from_sqlparser(&left.span());
                         self.diagnostics.push(
@@ -539,11 +544,7 @@ impl<'a> TypeResolver<'a> {
     }
 
     /// Infer type from a qualified column identifier (table.column)
-    fn infer_column_type_qualified(
-        &self,
-        table_name: &str,
-        col_name: &str,
-    ) -> ExpressionType {
+    fn infer_column_type_qualified(&self, table_name: &str, col_name: &str) -> ExpressionType {
         // Look up table in scope
         if let Some(table_ref) = self.tables.get(table_name) {
             // Check if this is a derived table or view
@@ -614,9 +615,11 @@ mod tests {
 
         // Parse the query
         let dialect = crate::dialect::SqlDialect::PostgreSQL.parser_dialect();
-        let statements =
-            sqlparser::parser::Parser::parse_sql(dialect.as_ref(), "SELECT * FROM users WHERE id = 'text'")
-                .unwrap();
+        let statements = sqlparser::parser::Parser::parse_sql(
+            dialect.as_ref(),
+            "SELECT * FROM users WHERE id = 'text'",
+        )
+        .unwrap();
 
         let mut name_resolver = super::super::resolver::NameResolver::new(&catalog);
         name_resolver.resolve_statement(&statements[0]);
@@ -935,8 +938,7 @@ mod tests {
 
     #[test]
     fn test_text_types_compatibility() {
-        let schema_sql =
-            "CREATE TABLE users (username VARCHAR(50), bio TEXT, code CHAR(10));";
+        let schema_sql = "CREATE TABLE users (username VARCHAR(50), bio TEXT, code CHAR(10));";
         let mut builder = SchemaBuilder::new();
         builder.parse(schema_sql).unwrap();
         let (catalog, _) = builder.build();
@@ -1058,11 +1060,9 @@ mod tests {
         let dialect = crate::dialect::SqlDialect::PostgreSQL.parser_dialect();
 
         // INTEGER + INTEGER
-        let statements = sqlparser::parser::Parser::parse_sql(
-            dialect.as_ref(),
-            "SELECT a + b FROM data",
-        )
-        .unwrap();
+        let statements =
+            sqlparser::parser::Parser::parse_sql(dialect.as_ref(), "SELECT a + b FROM data")
+                .unwrap();
 
         let mut name_resolver = super::super::resolver::NameResolver::new(&catalog);
         name_resolver.resolve_statement(&statements[0]);
@@ -1079,11 +1079,9 @@ mod tests {
         );
 
         // INTEGER + DECIMAL
-        let statements = sqlparser::parser::Parser::parse_sql(
-            dialect.as_ref(),
-            "SELECT a + price FROM data",
-        )
-        .unwrap();
+        let statements =
+            sqlparser::parser::Parser::parse_sql(dialect.as_ref(), "SELECT a + price FROM data")
+                .unwrap();
 
         let mut name_resolver = super::super::resolver::NameResolver::new(&catalog);
         name_resolver.resolve_statement(&statements[0]);

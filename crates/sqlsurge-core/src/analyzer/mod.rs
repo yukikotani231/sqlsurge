@@ -113,4 +113,3 @@ impl<'a> Analyzer<'a> {
         std::mem::take(&mut self.diagnostics)
     }
 }
-
